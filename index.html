@@ -1,0 +1,105 @@
+<link rel="icon" type="image/png" href="https://cdn.jsdelivr.net/gh/lddlinden/flygkalkylator@master/favicon.png">
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flygkalkylator</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; line-height: 1.6; }
+        .container { max-width: 600px; margin: 0 auto; }
+        input, button { display: block; width: 100%; margin: 10px 0; padding: 10px; }
+        #result { margin-top: 20px; padding: 10px; border: 1px solid #ccc; white-space: pre-wrap; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>Flygkalkylator</h1>
+    <input type="file" id="imageInput" accept="image/*" multiple>
+    <input type="number" id="pilotCount" placeholder="Antal piloter" min="1">
+    <textarea id="debugOCR" placeholder="Här visas råtext från OCR..." readonly style="width: 100%; height: 100px; margin: 10px 0;"></textarea>
+    <button id="analyzeBtn">Analysera</button>
+    <div id="result"></div>
+</div>
+
+    <script>
+        document.getElementById('analyzeBtn').addEventListener('click', async () => {
+            const files = Array.from(document.getElementById('imageInput').files);
+            const pilotCount = parseInt(document.getElementById('pilotCount').value);
+            if (files.length === 0 || !pilotCount) return alert('Välj minst en bild och ange antal piloter');
+
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerText = 'Analyserar...';
+
+            try {
+                const allMatches = [];
+                let fullRawText = '';
+                for (const file of files) {
+                    const formData = new FormData();
+                    formData.append('file', file);
+                    
+                    const response = await fetch('http://localhost:8000/ocr', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    
+                    if (!response.ok) throw new Error('OCR-servern svarade inte.');
+                    const { text } = await response.json();
+                    
+                    fullRawText += text + '\n---\n';
+                    const matches = [...text.matchAll(/(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})/g)];
+                    allMatches.push(...matches);
+                }
+                document.getElementById('debugOCR').value = fullRawText;
+                
+                // Sortera kronologiskt baserat på datum och tid
+                allMatches.sort((a, b) => new Date(a[0]) - new Date(b[0]));
+                
+                const flights = [];
+                for (let i = 0; i < allMatches.length; i += 2) {
+                    if (allMatches[i+1]) {
+                        const start = allMatches[i][2];
+                        const end = allMatches[i+1][2];
+                        const date = allMatches[i][1];
+                        
+                        const [startH, startM] = start.split(':').map(Number);
+                        const [endH, endM] = end.split(':').map(Number);
+                        const duration = (endH * 60 + endM) - (startH * 60 + startM);
+                        
+                        flights.push({ date, start, end, duration });
+                    }
+                }
+
+                if (flights.length === 0) throw new Error('Kunde inte läsa av flygningar');
+
+                const totalMinutes = flights.reduce((sum, f) => sum + f.duration, 0);
+                const timePerPilot = (totalMinutes / 60 / pilotCount).toFixed(2);
+
+                let output = `Analys av ${flights.length} flygningar:\n`;
+                output += `Total flygtid: ${(totalMinutes/60).toFixed(2)} timmar.\n`;
+                output += `Tid per pilot (${pilotCount} st): ${timePerPilot} timmar.\n\nDetaljer:\n`;
+                
+                flights.forEach((f) => {
+                    const isTwilight = isAfterNauticalTwilight(f.date, f.start);
+                    output += `${f.date}: ${f.start} - ${f.end} (${(f.duration/60).toFixed(2)}h)${isTwilight ? ' (efter nautisk skymning)' : ''}\n`;
+                });
+                
+                resultDiv.innerText = output;
+            } catch (e) {
+                resultDiv.innerText = 'Fel vid analys: ' + e.message;
+            }
+        });
+
+        function isAfterNauticalTwilight(dateStr, timeStr) {
+            const month = parseInt(dateStr.split('-')[1]);
+            const [h, m] = timeStr.split(':').map(Number);
+            const time = h + m/60;
+            const twilightTimes = {
+                1: 17.5, 2: 18.5, 3: 19.5, 4: 21.0, 5: 22.5, 6: 23.5, 
+                7: 23.0, 8: 21.5, 9: 20.0, 10: 18.5, 11: 17.0, 12: 16.5
+            };
+            return time > (twilightTimes[month] || 20);
+        }
+    </script>
+</body>
+</html>
