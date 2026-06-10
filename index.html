@@ -73,33 +73,51 @@
                 if (flights.length === 0) throw new Error('Kunde inte läsa av flygningar');
 
                 const totalMinutes = flights.reduce((sum, f) => sum + f.duration, 0);
+                
+                // Fetch twilight times for all flight dates
+                const uniqueDates = [...new Set(flights.map(f => f.date))];
+                const twilightData = {};
+                for (const date of uniqueDates) {
+                    const resp = await fetch(`http://localhost:8000/twilight?date=${date}`);
+                    twilightData[date] = await resp.json();
+                }
+
+                let totalNightMinutes = 0;
+                flights.forEach(f => {
+                    const t = twilightData[f.date];
+                    if (t && t.begin && t.end) {
+                        const [startH, startM] = f.start.split(':').map(Number);
+                        const [endH, endM] = f.end.split(':').map(Number);
+                        const [beginH, beginM] = t.begin.split(':').map(Number);
+                        const [endH_tw, endM_tw] = t.end.split(':').map(Number);
+                        
+                        const startTotal = startH * 60 + startM;
+                        const endTotal = endH * 60 + endM;
+                        const beginTotal = beginH * 60 + beginM;
+                        const endTotal_tw = endH_tw * 60 + endM_tw;
+
+                        // Simple overlap logic:
+                        // Night is between endTotal_tw and startTotal_tw (next day)
+                        // This logic covers the evening part.
+                        if (endTotal > endTotal_tw) {
+                            totalNightMinutes += Math.min(endTotal, 1440) - Math.max(startTotal, endTotal_tw);
+                        }
+                    }
+                });
+
                 const timePerPilot = (totalMinutes / 60 / pilotCount).toFixed(2);
+                const nightTimePerPilot = (totalNightMinutes / 60 / pilotCount).toFixed(2);
 
                 let output = `Analys av ${flights.length} flygningar:\n`;
                 output += `Total flygtid: ${(totalMinutes/60).toFixed(2)} timmar.\n`;
-                output += `Tid per pilot (${pilotCount} st): ${timePerPilot} timmar.\n\nDetaljer:\n`;
+                output += `Tid per pilot (${pilotCount} st): ${timePerPilot} timmar.\n`;
+                output += `Mörkertid per pilot: ${nightTimePerPilot} timmar.\n\nDetaljer:\n`;
                 
                 flights.forEach((f) => {
-                    const isTwilight = isAfterNauticalTwilight(f.date, f.start);
-                    output += `${f.date}: ${f.start} - ${f.end} (${(f.duration/60).toFixed(2)}h)${isTwilight ? ' (efter nautisk skymning)' : ''}\n`;
+                    output += `${f.date}: ${f.start} - ${f.end} (${(f.duration/60).toFixed(2)}h)\n`;
                 });
                 
                 resultDiv.innerText = output;
-            } catch (e) {
-                resultDiv.innerText = 'Fel vid analys: ' + e.message;
-            }
-        });
-
-        function isAfterNauticalTwilight(dateStr, timeStr) {
-            const month = parseInt(dateStr.split('-')[1]);
-            const [h, m] = timeStr.split(':').map(Number);
-            const time = h + m/60;
-            const twilightTimes = {
-                1: 17.5, 2: 18.5, 3: 19.5, 4: 21.0, 5: 22.5, 6: 23.5, 
-                7: 23.0, 8: 21.5, 9: 20.0, 10: 18.5, 11: 17.0, 12: 16.5
-            };
-            return time > (twilightTimes[month] || 20);
-        }
     </script>
 </body>
 </html>
