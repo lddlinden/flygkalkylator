@@ -1,6 +1,5 @@
 fastapi
 uvicorn
-easyocr
+paddlepaddle
+paddleocr
 pillow
-torch
-torchvision
