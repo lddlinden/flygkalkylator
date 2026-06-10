@@ -1,10 +1,5 @@
---extra-index-url https://download.pytorch.org/whl/cpu
-
 python-multipart
-torch
-torchvision
 fastapi
 uvicorn
 pillow
-requests
 easyocr

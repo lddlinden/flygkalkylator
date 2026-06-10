@@ -42,7 +42,8 @@ async def get_twilight(date: str):
 async def perform_ocr(file: UploadFile = File(...)):
     image_data = await file.read()
     
-    results = reader.readtext(image_data, detail=0)
+    image = Image.open(io.BytesIO(image_data))
+    results = reader.readtext(image, detail=0)
     text = " ".join(results)
     
     return {"text": text}

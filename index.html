@@ -78,7 +78,7 @@
                 const uniqueDates = [...new Set(flights.map(f => f.date))];
                 const twilightData = {};
                 for (const date of uniqueDates) {
-                    const resp = await fetch(`http://localhost:8000/twilight?date=${date}`);
+                    const resp = await fetch(`http://192.168.1.8:8000/twilight?date=${date}`);
                     twilightData[date] = await resp.json();
                 }
 
@@ -102,6 +102,8 @@
                         if (endTotal > endTotal_tw) {
                             totalNightMinutes += Math.min(endTotal, 1440) - Math.max(startTotal, endTotal_tw);
                         }
+                    } else {
+                        console.warn(`Ingen skymningsdata för datum: ${f.date}`);
                     }
                 });
 
